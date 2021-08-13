@@ -13,10 +13,10 @@ terraform init -backend-config="./backend-config/partial_config.hcl"
 terraform validate
 
 ## Terraform Plan
-terraform plan -var-file="./terraform-vars.tfvars"
+terraform plan -var-file="./terraform-dblabs.tfvars"
 
 ## Terraform Apply 
-terraform apply -var-file="./terraform-vars.tfvars"
+terraform apply -var-file="./terraform-dblabs.tfvars"
 
 ## Terraform Destroy
-terraform destroy -var-file="./terraform-vars.tfvars"
+terraform destroy -var-file="./terraform-dblabs.tfvars"
