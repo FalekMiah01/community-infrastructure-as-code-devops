@@ -1,0 +1,11 @@
+# Ignore local .terraform directories
+**/.terraform/*
+
+# Ignore .tfstate files
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+*.tfstate.lock.info
+
+# Ignore crash log files
+crash.log
