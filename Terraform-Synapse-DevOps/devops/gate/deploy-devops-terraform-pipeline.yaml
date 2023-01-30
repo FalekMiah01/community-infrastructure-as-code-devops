@@ -1,0 +1,112 @@
+#################################################
+# Triggers
+#################################################
+trigger:
+  - main
+
+#################################################
+# Pool
+#################################################
+pool:
+  vmImage: 'ubuntu-latest'
+
+#################################################
+# Parameters
+#################################################
+parameters:
+  - name: par_environment
+    displayName: Enter the Environment Name
+    default: dev
+    type: string
+
+#################################################
+# Variables
+#################################################
+variables:
+  env: ${{parameters.par_environment}}
+  app_name: 'tfsynapsedevops'
+  terraform_directory: 'Terraform-Synapse-DevOps-Session/synapse-full'
+  terraform_version: "latest"
+  # Backend-Config
+  service_connection: 'terraform-spn-dev'
+  key_vault_name: "terraformfm-kv-weu-dev"
+  tf_state_backend_resource_group_name: 'rg-terraformfm-weu-dev'
+  tf_state_backend_resource_group_location: 'West Europe'
+  tf_state_backend_storage_account_name: 'terraformfmblobweu'
+  tf_state_backend_container_name: 'terraformfm-state-synapse'
+  tf_state_backend_key_name: '$(app_name).${env}.terraform.tfstate'
+
+#################################################
+# Stages
+#################################################
+stages:
+## Dev_Deployment
+- stage: Dev_Deployment
+
+  #################################################
+  # Jobs
+  #################################################
+  jobs:
+    #################################################
+    # Job: Build Infrastructure
+    #################################################
+    - deployment: planBuildTerraform
+      condition: eq(variables.isMain, 'false')
+      displayName: Build Infrastructure for Deployment
+      environment: 'development'
+      timeoutInMinutes: 120 # task times out in 2 hours
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - template: ../devops/tmp-build-infra-terraform.yaml
+              parameters:
+                service_connection: $(service_connection)
+                env: '$(env)'
+                app_name: '$(app_name)'
+                terraform_directory: '$(terraform_directory)'
+                terraform_version: "$(terraform_version)"
+                key_vault_name: '$(key_vault_name)'
+                tf_state_backend_resource_group_name: '$(tf_state_backend_resource_group_name)'
+                tf_state_backend_resource_group_location: '$(tf_state_backend_resource_group_location)'
+                tf_state_backend_storage_account_name: '$(tf_state_backend_storage_account_name)'
+                tf_state_backend_container_name: '$(tf_state_backend_container_name)'
+    
+    #################################################
+    # Job: Approve Build
+    #################################################
+    - job: waitForApproval
+      dependsOn: [planBuildTerraform]
+      condition: succeeded('planBuildTerraform')
+      displayName: Wait for approval
+      pool: server
+      timeoutInMinutes: 1440 # task times out in 1 day
+      steps:
+      - task: ManualValidation@0
+        timeoutInMinutes: 1440 # task times out in 1 day
+        inputs:
+          notifyUsers: |
+            falek@advancinganalytics.co.uk
+          instructions: 'Please validate and approve the plan'
+          onTimeout: 'resume'
+          
+    #################################################
+    # Job: Deploy Infrastructure
+    #################################################
+    - deployment: applyDeployTerraform
+      dependsOn: [planBuildTerraform, 'waitForApproval']
+      condition: succeeded('planBuildTerraform', 'waitForApproval')
+      displayName: Deploy Infrastructure for Deployment
+      environment: 'development' 
+      timeoutInMinutes: 120 # task times out in 2 hours
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - template: ../devops/Templates/template-deploy-infra-no-sh-agent.yaml
+              parameters:
+                service_connection: $(service_connection)
+                env: '$(env)'
+                terraform_directory: '$(terraform_directory)'
+                terraform_version: "$(terraform_version)"
+                key_vault_name: '$(key_vault_name)'

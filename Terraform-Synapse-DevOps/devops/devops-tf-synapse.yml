@@ -1,0 +1,166 @@
+#################################################
+# Triggers
+#################################################
+trigger:
+  - none
+
+#################################################
+# Pool
+#################################################
+pool:
+  vmImage: 'ubuntu-latest'
+
+#################################################
+# Parameters
+#################################################
+parameters:
+  - name: par_prefix
+    displayName: Enter the project name
+    default: 'tfsynapsedevops'
+    type: string
+    
+  - name: par_environment
+    displayName: Enter the Environment Name
+    default: dev
+    type: string
+
+#################################################
+# Variables
+#################################################
+variables:
+  env: ${{parameters.par_environment}}
+  prefix: ${{parameters.par_prefix}}
+  terraform_directory: 'Terraform-Synapse-DevOps-Session/tf-synapse-devops'
+  terraform_version: "latest"
+  # Backend-Config
+  service_connection: 'terraform-spn-dev'
+  key_vault_name: "terraformfm-kv-weu-dev"
+  tf_state_backend_resource_group_name: 'rg-terraformfm-weu-dev'
+  tf_state_backend_resource_group_location: 'West Europe'
+  tf_state_backend_storage_account_name: 'terraformfmblobweu'
+  tf_state_backend_container_name: 'terraformfm-state-synapse'
+  tf_state_backend_key_name: '$(prefix).${{parameters.par_environment}}.terraform.tfstate'
+
+#################################################
+# Stages
+#################################################
+stages :
+- stage: Deploy_Dev
+  #################################################
+  # Jobs
+  #################################################
+  jobs:
+    - job: Deploy_Dev
+      displayName: "Plan and Apply Infrastructure using Terraform"
+      continueOnError: false
+
+      #################################################
+      # Steps
+      #################################################
+      steps:
+      - checkout: self
+
+      #################################################
+      # Azure Key Vault
+      #################################################
+      - task: AzureKeyVault@1
+        displayName: Retrieve key vault secrets
+        inputs:
+            azureSubscription: $(service_connection)
+            keyVaultName: $(key_vault_name)
+            secretsFilter: 'ARM-CLIENT-ID, ARM-CLIENT-SECRET, ARM-TENANT-ID, ARM-SUBSCRIPTION-ID'
+            runAsPreJob: false
+      
+      #################################################
+      # DevOps Extension Task
+      #################################################
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@0
+        displayName: Install Terraform
+        inputs:
+          terraformVersion: $(terraform_version)
+
+      #################################################
+      # Terraform Init
+      #################################################
+      - task: TerraformCLI@0
+        displayName: Terraform Init
+        inputs:
+          command: "init"
+          workingDirectory: $(System.DefaultWorkingDirectory)/$(terraform_directory)
+          backendType: "azurerm"
+          allowTelemetryCollection: true
+          backendServiceArm: $(service_connection)
+          runAzLogin: true
+          ensureBackend: true
+          backendAzureRmResourceGroupName: $(tf_state_backend_resource_group_name)
+          backendAzureRmResourceGroupLocation: $(tf_state_backend_resource_group_location)
+          backendAzureRmStorageAccountName: $(tf_state_backend_storage_account_name)
+          backendAzureRmContainerName: $(tf_state_backend_container_name)
+          backendAzureRmKey: '$(tf_state_backend_key_name)'
+        env:
+            ARM_CLIENT_ID: $(ARM-CLIENT-ID)
+            ARM_CLIENT_SECRET: $(ARM-CLIENT-SECRET)
+            ARM_SUBSCRIPTION_ID: $(ARM-SUBSCRIPTION-ID)
+            ARM_TENANT_ID: $(ARM-TENANT-ID)
+
+      #################################################
+      # Terraform Validate
+      #################################################
+      - task: TerraformCLI@0
+        displayName: Terraform Validate
+        inputs:
+            command: validate
+            envServiceName: $(service_connection)
+            runAzLogin: true
+            workingDirectory: $(System.DefaultWorkingDirectory)/$(terraform_directory)
+            allowTelemetryCollection: true
+        env:
+            ARM_CLIENT_ID: $(ARM-CLIENT-ID)
+            ARM_CLIENT_SECRET: $(ARM-CLIENT-SECRET)
+            ARM_SUBSCRIPTION_ID: $(ARM-SUBSCRIPTION-ID)
+            ARM_TENANT_ID: $(ARM-TENANT-ID)
+
+      #################################################
+      # Terraform Plan
+      #################################################
+      - task: TerraformCLI@0
+        displayName: Terraform Plan
+        inputs:
+          command: plan
+          environmentServiceName: $(service_connection)
+          runAzLogin: true
+          workingDirectory: $(System.DefaultWorkingDirectory)/$(terraform_directory)
+          allowTelemetryCollection: true
+          commandOptions: '-input=false
+                           -var client_id=$(ARM-CLIENT-ID)
+                           -var client_secret=$(ARM-CLIENT-SECRET)
+                           -var tenant_id=$(ARM-TENANT-ID)
+                           -var subscription_id=$(ARM-SUBSCRIPTION-ID)
+                           -var tf_state_backend_key_name=$(tf_state_backend_key_name)
+                           -var tf_state_backend_resource_group_name=$(tf_state_backend_resource_group_name)
+                           -var tf_state_backend_storage_account_name=$(tf_state_backend_storage_account_name)
+                           -var tf_state_backend_container_name=$(tf_state_backend_container_name)
+                           -var-file="./terraform.tfvars"
+                           -out ${BUILD_BUILDNUMBER}.tfplan'
+        env:
+            ARM_CLIENT_ID: $(ARM-CLIENT-ID)
+            ARM_CLIENT_SECRET: $(ARM-CLIENT-SECRET)
+            ARM_SUBSCRIPTION_ID: $(ARM-SUBSCRIPTION-ID)
+            ARM_TENANT_ID: $(ARM-TENANT-ID)
+
+      #################################################
+      # Terraform Apply
+      #################################################
+      - task: TerraformCLI@0
+        displayName: Terraform Apply
+        inputs:
+          command: apply
+          environmentServiceName: $(service_connection)
+          workingDirectory: $(System.DefaultWorkingDirectory)/$(terraform_directory)
+          allowTelemetryCollection: true
+          commandOptions: '-input=false -auto-approve "${BUILD_BUILDNUMBER}.tfplan"'
+        env:
+            ARM_CLIENT_ID: $(ARM-CLIENT-ID)
+            ARM_CLIENT_SECRET: $(ARM-CLIENT-SECRET)
+            ARM_SUBSCRIPTION_ID: $(ARM-SUBSCRIPTION-ID)
+            ARM_TENANT_ID: $(ARM-TENANT-ID)
