@@ -1,0 +1,132 @@
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+parameters:
+- name: par_environment
+  displayName: Enter the Environment Name
+  default: dev
+  type: string
+
+variables:
+  prefix: 'sqlbitsbase' 
+  terraform_directory: Terraform-DBX-Session-Prep/terrform-adls
+  terraform_version: latest
+  service_connection: 'applied-infra-as-code'
+  key_vault_name: kv-appliedinfraascode 
+  tf_state_backend_resource_group_name: rg-advancinanalytics-appliedInfraasaode 
+  tf_state_backend_resource_group_location: "UK South"
+  tf_state_backend_storage_account_name: saappliedinfraascode
+  tf_state_backend_container_name: terraform-state-dev
+  tf_state_backend_key_name: ${{ parameters.par_environment }}.$(prefix).terraform.tfstate
+
+stages :
+- stage: Validate_Plan__Apply_Terraform
+  jobs:
+    - job: Validate_Plan__Apply_Terraform
+      displayName: "Validate, Plan & Apply Terraform > install, init, validate, plan and apply"
+      continueOnError: false
+      steps:
+      - checkout: self
+      - task: AzureKeyVault@1
+        displayName: Retrieve key vault secrets
+        inputs:
+            azureSubscription: $(service_connection)
+            keyVaultName: $(key_vault_name)
+            secretsFilter: "*"
+            runAsPreJob: false
+      
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@0
+        inputs:
+          terraformVersion: 'latest'
+
+      - task: TerraformCLI@0
+        displayName: Terraform Init
+        inputs:
+          command: "init"
+          workingDirectory: $(System.DefaultWorkingDirectory)/$(terraform_directory)
+          backendType: "azurerm"
+          allowTelemetryCollection: true
+          backendServiceArm: $(service_connection)
+          runAzLogin: false
+          ensureBackend: true
+          backendAzureRmResourceGroupName: $(tf_state_backend_resource_group_name)
+          backendAzureRmResourceGroupLocation: $(tf_state_backend_resource_group_location)
+          backendAzureRmStorageAccountName: $(tf_state_backend_storage_account_name)
+          backendAzureRmContainerName: $(tf_state_backend_container_name)
+          backendAzureRmKey: '$(tf_state_backend_key_name)'
+        env:
+          ARM_CLIENT_ID: $(ARM-CLIENT-ID)
+          ARM_CLIENT_SECRET: $(ARM-CLIENT-SECRET)
+          ARM_TENANT_ID: $(ARM-TENANT-ID)
+          ARM_SUBSCRIPTION_ID: $(ARM-SUBSCRIPTION-ID)
+      
+      - task: TerraformCLI@0
+        displayName: Terraform Validate
+        inputs:
+          command: "validate"
+          workingDirectory: $(System.DefaultWorkingDirectory)/$(terraform_directory)
+          backendType: "azurerm"
+          allowTelemetryCollection: true
+          backendServiceArm: $(service_connection)
+          runAzLogin: false
+          ensureBackend: true
+          backendAzureRmResourceGroupName: $(tf_state_backend_resource_group_name)
+          backendAzureRmResourceGroupLocation: $(tf_state_backend_resource_group_location)
+          backendAzureRmStorageAccountName: $(tf_state_backend_storage_account_name)
+          backendAzureRmContainerName: $(tf_state_backend_container_name)
+          backendAzureRmKey: '$(tf_state_backend_key_name)'
+        env:
+          ARM_CLIENT_ID: $(ARM-CLIENT-ID)
+          ARM_CLIENT_SECRET: $(ARM-CLIENT-SECRET)
+          ARM_TENANT_ID: $(ARM-TENANT-ID)
+          ARM_SUBSCRIPTION_ID: $(ARM-SUBSCRIPTION-ID)
+
+      - task: TerraformCLI@0
+        displayName: Terraform Plan
+        inputs:
+          command: "plan"
+          # commandOptions: "-var environment=${{ parameters.par_environment }}"
+          workingDirectory: $(System.DefaultWorkingDirectory)/$(terraform_directory)
+          backendType: "azurerm"
+          allowTelemetryCollection: true
+          backendServiceArm: $(service_connection)
+          runAzLogin: false
+          ensureBackend: true
+          backendAzureRmResourceGroupName: $(tf_state_backend_resource_group_name)
+          backendAzureRmResourceGroupLocation: $(tf_state_backend_resource_group_location)
+          backendAzureRmStorageAccountName: $(tf_state_backend_storage_account_name)
+          backendAzureRmContainerName: $(tf_state_backend_container_name)
+          backendAzureRmKey: '$(tf_state_backend_key_name)'
+        env:
+           ARM_CLIENT_ID: $(ARM-CLIENT-ID)
+           ARM_CLIENT_SECRET: $(ARM-CLIENT-SECRET)
+           ARM_SUBSCRIPTION_ID: $(ARM-SUBSCRIPTION-ID)
+           ARM_TENANT_ID: $(ARM-TENANT-ID)
+      - task: TerraformCLI@0
+        displayName: Terraform Apply
+        inputs:
+          command: "apply"
+          # commandOptions: "-var environment=${{ parameters.par_environment }}"
+          workingDirectory: $(System.DefaultWorkingDirectory)/$(terraform_directory)
+          backendType: "azurerm"
+          allowTelemetryCollection: true
+          backendServiceArm: $(service_connection)
+          runAzLogin: false
+          ensureBackend: true
+          backendAzureRmResourceGroupName: $(tf_state_backend_resource_group_name)
+          backendAzureRmResourceGroupLocation: $(tf_state_backend_resource_group_location)
+          backendAzureRmStorageAccountName: $(tf_state_backend_storage_account_name)
+          backendAzureRmContainerName: $(tf_state_backend_container_name)
+          backendAzureRmKey: '$(tf_state_backend_key_name)'
+        env:
+           ARM_CLIENT_ID: $(ARM-CLIENT-ID)
+           ARM_CLIENT_SECRET: $(ARM-CLIENT-SECRET)
+           ARM_SUBSCRIPTION_ID: $(ARM-SUBSCRIPTION-ID)
+           ARM_TENANT_ID: $(ARM-TENANT-ID)
+
+
+
+
+
